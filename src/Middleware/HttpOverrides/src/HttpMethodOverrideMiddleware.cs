@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 
 namespace Microsoft.AspNetCore.HttpOverrides;
@@ -50,6 +51,7 @@ public class HttpMethodOverrideMiddleware
                 if (!string.IsNullOrEmpty(xHttpMethodOverrideValue))
                 {
                     context.Request.Method = xHttpMethodOverrideValue.ToString();
+                    ClearHttpContext(context);
                 }
             }
         }
@@ -64,6 +66,19 @@ public class HttpMethodOverrideMiddleware
         {
             context.Request.Method = methodType.ToString();
         }
+        ClearHttpContext(context);
         await _next(context);
+    }
+
+    private static void ClearHttpContext(HttpContext context)
+    {
+        // An endpoint may have already been set. Since we're going to re-invoke the middleware pipeline we need to reset
+        // the endpoint and route values to ensure things are re-calculated.
+        context.SetEndpoint(endpoint: null);
+        var routeValuesFeature = context.Features.Get<IRouteValuesFeature>();
+        if (routeValuesFeature != null)
+        {
+            routeValuesFeature.RouteValues = null!;
+        }
     }
 }

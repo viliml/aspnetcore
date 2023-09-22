@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Microsoft.AspNetCore.Builder;
@@ -21,7 +23,7 @@ public static class HttpMethodOverrideExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.UseMiddleware<HttpMethodOverrideMiddleware>();
+        return SetHttpMethodOverrideMiddleware(builder, options: null);
     }
 
     /// <summary>
@@ -37,6 +39,31 @@ public static class HttpMethodOverrideExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(options);
 
-        return builder.UseMiddleware<HttpMethodOverrideMiddleware>(Options.Create(options));
+        var iOptions = Options.Create(options);
+        return SetHttpMethodOverrideMiddleware(builder, iOptions);
+    }
+
+    private static IApplicationBuilder SetHttpMethodOverrideMiddleware(IApplicationBuilder builder, IOptions<HttpMethodOverrideOptions>? options)
+    {
+        // Only use this path if there's a global router (in the 'WebApplication' case).
+        if (builder.Properties.TryGetValue(RerouteHelper.GlobalRouteBuilderKey, out var routeBuilder) && routeBuilder is not null)
+        {
+            return builder.Use(next =>
+            {
+                if (options is null)
+                {
+                    options = builder.ApplicationServices.GetRequiredService<IOptions<HttpMethodOverrideOptions>>();
+                }
+                var newNext = RerouteHelper.Reroute(builder, routeBuilder, next);
+                return new HttpMethodOverrideMiddleware(newNext, options).Invoke;
+            });
+        }
+
+        if (options is null)
+        {
+            return builder.UseMiddleware<HttpMethodOverrideMiddleware>();
+        }
+
+        return builder.UseMiddleware<HttpMethodOverrideMiddleware>(options);
     }
 }
